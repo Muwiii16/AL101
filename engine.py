@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 import uuid
+import math
 
 LRT1_STATIONS = [
     "Fernando Poe Jr.", "Balintawak", "Monumento", "5th Avenue",
@@ -26,246 +27,358 @@ MRT3_STATIONS = [
 ]
 
 LINES = {
-    "LRT1": LRT1_STATIONS,
-    "LRT2": LRT2_STATIONS,
-    "MRT3": MRT3_STATIONS
+    "LRT-1": LRT1_STATIONS,
+    "LRT-2": LRT2_STATIONS,
+    "MRT-3": MRT3_STATIONS
 }
 
 
-def build_graph(stations: list[str]) -> dict[str, dict[str, int]]:
-    graph = dict[str, dict[str, int]] = {s: {} for s in stations}
-    for i in range(len(stations) - 1):
-        a, b = stations[i], stations[i + 1]
+def build_graph(stations):
+    graph = {}
+    for s in stations:
+        graph[s] = {}
+
+    for i in range(len(stations)-1):
+        a = stations[i]
+        b = stations[i+1]
         graph[a][b] = 1
         graph[b][a] = 1
     return graph
 
 
-LINE_GRAPHS = dict[str, dict[str, dict[str, int]]] = {
-    line: build_graph(stations) for line, stations in LINES.items()}
+LINE_GRAPHS = {
+    line: build_graph(stations) for line, stations in LINES.items()
+}
 
 
-def dijkstra(graph: dict, origin: str, destination: str) -> tuple[int, list[str]]:
-
-    dist = {node: float('inf') for node in graph}
-    prev: dict[str, Optional[str]] = {node: None for node in graph}
+def dijkstra(graph, origin, destination):
+    dist = {}
+    for node in graph:
+        dist[node] = float('inf')
     dist[origin] = 0
-    heap: list[tuple[int, str]] = [(0, origin)]
+
+    prev = {}
+    for node in graph:
+        prev[node] = None
+
+    heap = [(0, origin)]
 
     while heap:
         current_dist, u = heapq.heappop(heap)
+
         if current_dist > dist[u]:
             continue
+
         for neighbor, weight in graph[u].items():
             alt = dist[u]+weight
+
             if alt < dist[neighbor]:
                 dist[neighbor] = alt
                 prev[neighbor] = u
                 heapq.heappush(heap, (alt, neighbor))
 
-    path: list[str] = []
-    node: Optional[str] = destination
+    path = []
+    node = destination
     while node is not None:
         path.append(node)
         node = prev[node]
     path.reverse()
 
     stops = dist[destination]
-    return (int(stops) if stops != float('inf')else -1, path)
+    if stops == float('inf'):
+        return -1, []
+    return stops, path
 
 
 BOARDING_ZONES = {
-    "ZONE A — Door 1 (Interior)":  "Long trip (≥7 stops). Board first, move deep into carriage.",
-    "ZONE B — Door 2 (Middle)":    "Medium trip (4–6 stops). Board second, stand mid-carriage.",
-    "ZONE C — Door 3 (Near Exit)": "Short trip (1–3 stops). Board last, stay near doors.",
+    "ZONE A - DOOR 1": "Long trip (≥ 10 stops). Board through Door 1.",
+    "ZONE B - DOOR 2": "Medium-long trip (6-9 stops). Board through Door 2.",
+    "ZONE C - DOOR 3": "Medium trip (3-5 stops). Board through Door 3.",
+    "ZONE D - DOOR 4": "Short trip (1-2 stops). Board through Door 4."
+}
+
+ZONE_RANGES = {
+    "ZONE A - DOOR 1": (10, float('inf')),
+    "ZONE B - DOOR 2": (6, 9),
+    "ZONE C - DOOR 3": (3, 5),
+    "ZONE D - DOOR 4": (1, 2)
 }
 
 
-def get_zone(stops: int) -> tuple[str, str]:
-    if stops >= 7:
-        zone = "ZONE A — Door 1 (Interior)"
-    elif stops >= 4:
-        zone = "ZONE B — Door 2 (Middle)"
+def get_zone(stops):
+    if stops >= 10:
+        zone = "ZONE A - DOOR 1"
+    elif stops >= 6:
+        zone = "ZONE B - DOOR 2"
+    elif stops >= 3:
+        zone = "ZONE C - DOOR 3"
     else:
-        zone = "ZONE C — Door 3 (Near Exit)"
+        zone = "ZONE D - DOOR 4"
     return zone, BOARDING_ZONES[zone]
+
+
+def get_position_label(position, total):
+    if total == 1:
+        return "Center"
+    if total == 2:
+        if position == 1:
+            return 'Far Back'
+        else:
+            return 'Near Door'
+
+    third = total/3
+
+    if position <= math.ceil(third):
+        return "Far Back"
+    elif position <= math.ceil(third*2):
+        return "Middle"
+    else:
+        return "Near Door"
 
 
 @dataclass(order=True)
 class Passenger:
-
     priority: int
+
     stops: int = field(compare=False)
     passenger_id: str = field(compare=False)
     name: str = field(compare=False)
+    line: str = field(compare=False)
     origin: str = field(compare=False)
     destination: str = field(compare=False)
-    line: str = field(compare=False)
-    path: list[str] = field(compare=False, default_factory=list)
     zone: str = field(compare=False, default="")
     zone_desc: str = field(compare=False, default="")
+    position: int = field(compare=False, default=0)
+    position_label: str = field(compare=False, default="")
+    path: list = field(compare=False, default_factory=list)
     timestamp: str = field(compare=False, default="")
     status: str = field(compare=False, default="On Platform")
+    car_number: int = field(compare=False, default=0)
 
 
 class PlatformQueue:
-    """Standard FIFO queue representing passengers waiting on the platform."""
 
     def __init__(self):
-        self._queue: deque[Passenger] = deque()
+        self._queue = deque()
 
-    def enqueue(self, p: Passenger):
-        self._queue.append(p)
+    def enqueue(self, passenger):
+        self._queue.append(passenger)
 
-    def dequeue(self) -> Optional[Passenger]:
-        return self._queue.popleft() if self._queue else None
+    def dequeue(self):
+        if self._queue:
+            return self._queue.popleft()
+        return None
 
-    def peek(self) -> Optional[Passenger]:
-        return self._queue[0] if self._queue else None
+    def peek(self):
+        if self._queue:
+            return self._queue[0]
+        return None
 
-    def size(self) -> int:
+    def size(self):
         return len(self._queue)
 
-    def all(self) -> list[Passenger]:
+    def all(self):
         return list(self._queue)
 
     def clear(self):
         self._queue.clear()
 
+    def remove(self, passenger_id):
+        self._queue = deque(
+            p for p in self._queue
+            if p.passenger_id != passenger_id
+        )
+
 
 class BoardingPriorityQueue:
-    """
-    Priority Queue where highest-stop passengers board first.
-    Implements the 'Destination Grouping' concept from the paper.
-    """
-
     def __init__(self):
-        self._heap: list[Passenger] = []
+        self._heap = []
 
-    def push(self, p: Passenger):
-        heapq.heappush(self._heap, p)
+    def push(self, passenger):
+        heapq.heappush(self._heap, passenger)
 
-    def pop(self) -> Optional[Passenger]:
-        return heapq.heappop(self._heap) if self._heap else None
+    def pop(self):
+        if self._heap:
+            return heapq.heappop(self._heap)
+        return None
 
-    def peek(self) -> Optional[Passenger]:
-        return self._heap[0] if self._heap else None
+    def peek(self):
+        if self._heap:
+            return self._heap[0]
+        return None
 
-    def size(self) -> int:
+    def size(self):
         return len(self._heap)
 
-    def all(self) -> list[Passenger]:
-        return sorted(self._heap)   # sorted by priority (boarding order)
+    def all(self):
+        return sorted(self._heap)
 
     def clear(self):
         self._heap.clear()
 
 
-class TrainCarStack:
-    """
-    Simulates the unmanaged LIFO 'Stack' problem described in the paper.
-    The last person to board blocks everyone behind them from exiting.
-    """
+class TrainCar:
 
-    def __init__(self, capacity: int = 20):
-        self._stack: list[Passenger] = []
+    def __init__(self, car_number, capacity=50):
+        self.car_number = car_number
         self.capacity = capacity
 
-    def push(self, p: Passenger) -> bool:
-        if len(self._stack) >= self.capacity:
+        self.zones = {
+            "ZONE A - DOOR 1": [],
+            "ZONE B - DOOR 2": [],
+            "ZONE C - DOOR 3": [],
+            "ZONE D - DOOR 4": []
+        }
+
+    def board(self, passenger):
+        if self.total_passengers() >= self.capacity:
             return False
-        self._stack.append(p)
-        p.status = "Boarded"
+
+        self.zones[passenger.zone].append(passenger)
+
+        self.zones[passenger.zone].sort(key=lambda p: p.stops, reverse=True)
+
+        zone_passengers = self.zones[passenger.zone]
+        total = len(zone_passengers)
+        for i, p in enumerate(zone_passengers):
+            p.position = i+1
+            p.position_label = get_position_label(i+1, total)
+
+        zone_passengers = self.zones[passenger.zone]
+        total = len(zone_passengers)
+        for i, p in enumerate(zone_passengers):
+            p.position = i + 1
+            p.position_label = get_position_label(i + 1, total)
+
+        # DEBUG — add this temporarily
+        print(f"\nZone {passenger.zone} after boarding {passenger.name}:")
+        for p in zone_passengers:
+            print(
+                f"  {p.name:<20} {p.stops} stops → pos {p.position} → {p.position_label}")
+
+        passenger.status = "Boarded"
+        passenger.car_number = self.car_number
         return True
 
-    def pop(self) -> Optional[Passenger]:
-        if self._stack:
-            p = self._stack.pop()
-            p.status = "Alighted"
-            return p
+    def alight(self, passenger_id):
+        for zone, zone_list in self.zones.items():
+            for p in zone_list:
+                if p.passenger_id == passenger_id:
+                    zone_list.remove(p)
+                    p.status = "Alighted"
+
+                    total = len(zone_list)
+                    for i, remaining in enumerate(zone_list):
+                        remaining.position = i+1
+                        remaining.position_label = get_position_label(
+                            i+1, total)
+                    return p
         return None
 
-    def peek(self) -> Optional[Passenger]:
-        return self._stack[-1] if self._stack else None
+    def total_passengers(self):
+        return sum(len(zone) for zone in self.zones.values())
 
-    def size(self) -> int:
-        return len(self._stack)
+    def is_full(self):
+        return self.total_passengers() >= self.capacity
 
-    def is_full(self) -> bool:
-        return len(self._stack) >= self.capacity
+    def get_zone_passenger(self, zone):
+        return self.zones[zone]
 
-    def all(self) -> list[Passenger]:
-        return list(reversed(self._stack))   # top of stack first
+    def all(self):
+        result = []
+        for zone_list in self.zones.values():
+            result.extend(zone_list)
+        return result
 
     def clear(self):
-        self._stack.clear()
+        for zone in self.zones:
+            self.zones[zone] = []
+
+
+class Train:
+    def __init__(self, cars=5, capacity_per_car=50):
+        self.cars = [TrainCar(i+1, capacity_per_car) for i in range(cars)]
+
+    def get_least_loaded_car(self):
+        available = [car for car in self.cars if not car.is_full()]
+        if not available:
+            return None
+        return min(available, key=lambda car: car.total_passengers())
+
+    def board(self, passenger):
+        car = self.get_least_loaded_car()
+        if car is None:
+            return False, "Train is full"
+        success = car.board(passenger)
+        if success:
+            return True, f'{passenger.name} boarder Car {car.car_number} - {passenger.zone}'
+        return False, "Could not board passenger"
+
+    def alight(self, passenger_id):
+        for car in self.cars:
+            result = car.alight(passenger_id)
+            if result:
+                return True, f'{result.name} alighted at {result.destination}', result
+        return False, 'Passenger not found', None
+
+    def total_passengers(self):
+        return sum(car.total_passengers() for car in self.cars)
+
+    def is_full(self):
+        return all(car.is_full() for car in self.cars)
+
+    def clear(self):
+        for car in self.cars:
+            car.clear()
 
 
 class TransitSystem:
-    """
-    Orchestrates all data structures and provides the main API
-    consumed by the Flet frontend.
-    """
-
-    # for priority inversion
-    MAX_STOPS = max(len(s) - 1 for s in LINES.values())
+    MAX_STOPS = max(len(stations)-1 for stations in LINES.values())
 
     def __init__(self):
         self.platform_queue = PlatformQueue()
         self.boarding_queue = BoardingPriorityQueue()
-        self.train_car = TrainCarStack(capacity=20)
-        self.history: list[Passenger] = []
+        self.train = Train(cars=5, capacity_per_car=50)
+        self.history = []
         self.total_registered = 0
         self.total_boarded = 0
         self.total_alighted = 0
 
-    def register_passenger(
-        self,
-        name: str,
-        line: str,
-        origin: str,
-        destination: str,
-    ) -> tuple[bool, str, Optional[Passenger]]:
-        """
-        Register a passenger:
-        1. Run Dijkstra to get stop count & path.
-        2. Compute priority score (inverted stops).
-        3. Assign boarding zone.
-        4. Enqueue on platform (FIFO arrival order).
-        5. Push to priority boarding queue.
-        """
+    def register_passenger(self, name, line, origin, destination):
+
         if line not in LINE_GRAPHS:
-            return False, f"Unknown line: {line}", None
+            return False, "Unknown transit line.", None
 
         graph = LINE_GRAPHS[line]
 
         if origin not in graph:
-            return False, f"Station '{origin}' not found on {line}.", None
+            return False, f'Stations "{origin}" not found on {line}.', None
         if destination not in graph:
-            return False, f"Station '{destination}' not found on {line}.", None
+            return False, f'Stations "{destination}" not found on {line}.', None
         if origin == destination:
             return False, "Origin and destination cannot be the same.", None
 
         stops, path = dijkstra(graph, origin, destination)
         if stops == -1:
-            return False, "No path found between the selected stations.", None
+            return False, "No valid path between origin and destination.", None
+
+        zone, zone_desc = get_zone(stops)
 
         priority = self.MAX_STOPS - stops
-        zone, zone_desc = get_zone(stops)
 
         passenger = Passenger(
             priority=priority,
             stops=stops,
             passenger_id=str(uuid.uuid4())[:8].upper(),
             name=name.strip() or "Passenger",
+            line=line,
             origin=origin,
             destination=destination,
-            line=line,
             path=path,
             zone=zone,
             zone_desc=zone_desc,
-            timestamp=datetime.now().strftime("%H:%M:%S"),
-            status="On Platform",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            status='On Platform'
         )
 
         self.platform_queue.enqueue(passenger)
@@ -273,64 +386,79 @@ class TransitSystem:
         self.history.append(passenger)
         self.total_registered += 1
 
-        return True, "Passenger registered successfully.", passenger
+        return True, 'Passenger registered successfully.', passenger
 
-    def board_next(self) -> tuple[bool, str, Optional[Passenger]]:
-        """
-        Board the next passenger from the priority queue (not the FIFO platform queue).
-        This is the 'Destination Grouping' optimized boarding.
-        """
+    def board_next(self):
         if self.boarding_queue.size() == 0:
-            return False, "No passengers waiting to board.", None
-        if self.train_car.is_full():
-            return False, "Train car is at full capacity.", None
+            return False, 'No passengers waiting to board.', None
+        if self.train.is_full():
+            return False, 'Train is full.', None
 
         passenger = self.boarding_queue.pop()
-        self.train_car.push(passenger)
-        self.total_boarded += 1
-        return True, f"{passenger.name} boarded → assigned to {passenger.zone}.", passenger
+        success, msg = self.train.board(passenger)
 
-    def board_all(self) -> tuple[int, list[Passenger]]:
-        """Board all queued passengers in priority order."""
+        if success:
+            self.total_boarded += 1
+            self.platform_queue.remove(passenger.passenger_id)
+            return True, msg, passenger
+        return False, msg, None
+
+    def board_all(self):
         boarded = []
-        while self.boarding_queue.size() > 0 and not self.train_car.is_full():
+        while self.boarding_queue.size() > 0 and not self.train.is_full():
             ok, _, p = self.board_next()
             if ok and p:
                 boarded.append(p)
         return len(boarded), boarded
 
-    def alight_next(self) -> tuple[bool, str, Optional[Passenger]]:
-        """
-        Remove passenger from the top of the train stack (LIFO simulation).
-        In the managed system this represents the person nearest the door exiting.
-        """
-        if self.train_car.size() == 0:
-            return False, "Train car is empty.", None
+    def alight_passenger(self, passenger_id):
+        ok, msg, passenger = self.train.alight(passenger_id)
+        if ok:
+            self.total_alighted += 1
+        return ok, msg, passenger
 
-        passenger = self.train_car.pop()
-        self.total_alighted += 1
-        return True, f"{passenger.name} alighted at {passenger.destination}.", passenger
+    def get_stats(self):
+        return {
+            'on_platform': self.platform_queue.size(),
+            'in_boarding_queue': self.boarding_queue.size(),
+            'total_in_train': self.train.total_passengers(),
+            'total_registered': self.total_registered,
+            'total_boarded': self.total_boarded,
+            'total_alighted': self.total_alighted
+        }
 
-    def reset(self):
+    def get_car_summary(self):
+        return {
+            f'Car {car.car_number}': car.total_passengers()
+            for car in self.train.cars
+        }
+
+    def reset_system(self):
         self.platform_queue.clear()
         self.boarding_queue.clear()
-        self.train_car.clear()
+        self.train.clear()
         self.history.clear()
         self.total_registered = 0
         self.total_boarded = 0
         self.total_alighted = 0
 
-    def get_stats(self) -> dict:
-        return {
-            "on_platform": self.platform_queue.size(),
-            "in_boarding_queue": self.boarding_queue.size(),
-            "in_train": self.train_car.size(),
-            "train_capacity": self.train_car.capacity,
-            "total_registered": self.total_registered,
-            "total_boarded": self.total_boarded,
-            "total_alighted": self.total_alighted,
-            "efficiency": round(
-                (self.total_alighted / self.total_boarded *
-                 100) if self.total_boarded else 0, 1
-            ),
-        }
+    def arrive_at_station(self, station_name):
+        alighted = []
+
+        for car in self.train.cars:
+            for zone_list in car.zones.values():
+                to_remove = [
+                    p for p in zone_list
+                    if p.destination == station_name
+                ]
+                for p in to_remove:
+                    zone_list.remove(p)
+                    p.status = 'Alighted'
+                    self.total_alighted += 1
+                    alighted.append(p)
+
+                total = len(zone_list)
+                for i, remaining in enumerate(zone_list):
+                    remaining.position = i+1
+                    remaining.position_label = get_position_label(i+1, total)
+        return alighted
