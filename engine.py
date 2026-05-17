@@ -32,8 +32,18 @@ LINES = {
     "MRT-3": MRT3_STATIONS
 }
 
+LRT1_WEIGHTS = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+LRT2_WEIGHTS = [3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+MRT3_WEIGHTS = [2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2]
 
-def build_graph(stations):
+LINE_WEIGHTS = {
+    "LRT-1": LRT1_WEIGHTS,
+    "LRT-2": LRT2_WEIGHTS,
+    "MRT-3": MRT3_WEIGHTS,
+}
+
+
+def build_graph(stations, weights):
     graph = {}
     for s in stations:
         graph[s] = {}
@@ -41,13 +51,14 @@ def build_graph(stations):
     for i in range(len(stations)-1):
         a = stations[i]
         b = stations[i+1]
-        graph[a][b] = 1
-        graph[b][a] = 1
+        w = weights[i]
+        graph[a][b] = w
+        graph[b][a] = w
     return graph
 
 
 LINE_GRAPHS = {
-    line: build_graph(stations) for line, stations in LINES.items()
+    line: build_graph(stations, LINE_WEIGHTS[line]) for line, stations in LINES.items()
 }
 
 
@@ -236,25 +247,14 @@ class TrainCar:
 
         self.zones[passenger.zone].append(passenger)
 
-        self.zones[passenger.zone].sort(key=lambda p: p.stops, reverse=True)
+        self.zones[passenger.zone].sort(
+            key=lambda p: LINES[p.line].index(p.destination), reverse=True)
 
         zone_passengers = self.zones[passenger.zone]
         total = len(zone_passengers)
         for i, p in enumerate(zone_passengers):
             p.position = i+1
             p.position_label = get_position_label(i+1, total)
-
-        zone_passengers = self.zones[passenger.zone]
-        total = len(zone_passengers)
-        for i, p in enumerate(zone_passengers):
-            p.position = i + 1
-            p.position_label = get_position_label(i + 1, total)
-
-        # DEBUG — add this temporarily
-        print(f"\nZone {passenger.zone} after boarding {passenger.name}:")
-        for p in zone_passengers:
-            print(
-                f"  {p.name:<20} {p.stops} stops → pos {p.position} → {p.position_label}")
 
         passenger.status = "Boarded"
         passenger.car_number = self.car_number
@@ -296,7 +296,7 @@ class TrainCar:
 
 
 class Train:
-    def __init__(self, cars=5, capacity_per_car=50):
+    def __init__(self, cars=5, capacity_per_car=10):
         self.cars = [TrainCar(i+1, capacity_per_car) for i in range(cars)]
 
     def get_least_loaded_car(self):
@@ -338,7 +338,7 @@ class TransitSystem:
     def __init__(self):
         self.platform_queue = PlatformQueue()
         self.boarding_queue = BoardingPriorityQueue()
-        self.train = Train(cars=5, capacity_per_car=50)
+        self.train = Train(cars=5, capacity_per_car=10)
         self.history = []
         self.total_registered = 0
         self.total_boarded = 0
