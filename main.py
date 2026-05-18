@@ -86,7 +86,7 @@ def passenger_tile(p):
             ], spacing=2, expand=True),
             ft.Column([
                 badge(p.zone.split(' - ')[0].strip(), color),
-                txt(f'{p.stops} stop{"s" if p.stops != 1 else ""}',
+                txt(f'{p.stops} mins',
                     size=11, color=TEXT_SEC),
             ], spacing=3, horizontal_alignment=ft.CrossAxisAlignment.END),
             ft.Container(
@@ -123,7 +123,7 @@ def build_train_visual(train):
                             ft.Icons.PERSON,
                             color=color,
                             size=16,
-                            tooltip=f'{p.name} | {p.stops} stops | {p.position_label}',
+                            tooltip=f'{p.name} | {p.stops} mins | {p.position_label}',
                         ),
                         ft.Text(
                             p.position_label,
@@ -427,7 +427,7 @@ def main(page: ft.Page):
         result_id.value = f"ID: {p.passenger_id}  •  {p.timestamp}"
         result_zone.value = p.zone
         result_zone.color = get_zone_color(p.zone)
-        result_stops.value = f"{p.stops} stop{'s' if p.stops != 1 else ''}"
+        result_stops.value = f"{p.stops} mins travel time"
         result_path.value = "  →  ".join(p.path)
         result_desc.value = p.zone_desc
         result_car.value = "Pending boarding assignment..."

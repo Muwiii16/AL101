@@ -63,6 +63,7 @@ LINE_GRAPHS = {
 
 
 def dijkstra(graph, origin, destination):
+    print(f"Dijkstra: {origin} → {destination}")  # debug
     dist = {}
     for node in graph:
         dist[node] = float('inf')
@@ -102,10 +103,10 @@ def dijkstra(graph, origin, destination):
 
 
 BOARDING_ZONES = {
-    "ZONE A - DOOR 1": "Long trip (≥ 10 stops). Board through Door 1.",
-    "ZONE B - DOOR 2": "Medium-long trip (6-9 stops). Board through Door 2.",
-    "ZONE C - DOOR 3": "Medium trip (3-5 stops). Board through Door 3.",
-    "ZONE D - DOOR 4": "Short trip (1-2 stops). Board through Door 4."
+    "ZONE A - DOOR 1": "Long trip (≥28 mins). Board through Door 1.",
+    "ZONE B - DOOR 2": "Medium-long trip (14-27 mins). Board through Door 2.",
+    "ZONE C - DOOR 3": "Medium trip (6-13 mins). Board through Door 3.",
+    "ZONE D - DOOR 4": "Short trip (1-5 mins). Board through Door 4.",
 }
 
 ZONE_RANGES = {
@@ -117,11 +118,11 @@ ZONE_RANGES = {
 
 
 def get_zone(stops):
-    if stops >= 10:
+    if stops >= 28:
         zone = "ZONE A - DOOR 1"
-    elif stops >= 6:
+    elif stops >= 14:
         zone = "ZONE B - DOOR 2"
-    elif stops >= 3:
+    elif stops >= 6:
         zone = "ZONE C - DOOR 3"
     else:
         zone = "ZONE D - DOOR 4"
@@ -137,11 +138,9 @@ def get_position_label(position, total):
         else:
             return 'Near Door'
 
-    third = total/3
-
-    if position <= math.ceil(third):
+    if position <= total//3:
         return "Far Back"
-    elif position <= math.ceil(third*2):
+    elif position <= (total * 2)//3:
         return "Middle"
     else:
         return "Near Door"
@@ -250,6 +249,12 @@ class TrainCar:
         self.zones[passenger.zone].sort(
             key=lambda p: LINES[p.line].index(p.destination), reverse=True)
 
+        # debug
+        print(f"Sorting zone {passenger.zone}:")
+        for p in self.zones[passenger.zone]:
+            idx = LINES[p.line].index(p.destination)
+            print(f"  {p.name} → dest={p.destination} → idx={idx}")
+
         zone_passengers = self.zones[passenger.zone]
         total = len(zone_passengers)
         for i, p in enumerate(zone_passengers):
@@ -333,7 +338,7 @@ class Train:
 
 
 class TransitSystem:
-    MAX_STOPS = max(len(stations)-1 for stations in LINES.values())
+    MAX_STOPS = 38
 
     def __init__(self):
         self.platform_queue = PlatformQueue()
