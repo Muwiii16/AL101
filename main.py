@@ -103,6 +103,23 @@ def passenger_tile(p):
     )
 
 
+def mini_tile(p):
+    color = get_zone_color(p.zone)
+    return ft.Container(
+        content=ft.Row([
+            ft.Column([
+                txt(p.name, size=11, weight=ft.FontWeight.W_600),
+                txt(f'{p.stops} mins', size=10, color=TEXT_MUTED),
+            ], spacing=1, expand=True),
+        ]),
+        bgcolor=SURFACE,
+        border_radius=6,
+        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+        border=ft.Border.all(1, color),
+        margin=ft.Margin(0, 2, 0, 0),
+    )
+
+
 def build_train_visual(train):
     car_cards = []
 
@@ -340,11 +357,12 @@ def main(page: ft.Page):
         [txt("— Empty —", color=TEXT_MUTED)],
         spacing=0, scroll=ft.ScrollMode.AUTO, expand=True
     )
-    boarding_col = ft.Column(
-        [txt("— Empty —", color=TEXT_MUTED)],
-        spacing=0, scroll=ft.ScrollMode.AUTO, expand=True
-    )
-
+    boarding_zone_cols = {
+        "ZONE A - DOOR 1": ft.Column([], spacing=0, scroll=ft.ScrollMode.AUTO),
+        "ZONE B - DOOR 2": ft.Column([], spacing=0, scroll=ft.ScrollMode.AUTO),
+        "ZONE C - DOOR 3": ft.Column([], spacing=0, scroll=ft.ScrollMode.AUTO),
+        "ZONE D - DOOR 4": ft.Column([], spacing=0, scroll=ft.ScrollMode.AUTO),
+    }
     # --- TRAIN VISUAL CONTAINER ---
     train_visual_container = ft.Ref[ft.Column]()
 
@@ -380,10 +398,15 @@ def main(page: ft.Page):
             or [txt("— Empty —", color=TEXT_MUTED)]
         )
         # boarding queue
-        boarding_col.controls = (
-            [passenger_tile(p) for p in system.boarding_queue.all()]
-            or [txt("— Empty —", color=TEXT_MUTED)]
-        )
+        all_boarding = system.boarding_queue.all()
+
+        for zone_key, col in boarding_zone_cols.items():
+            zone_passengers = [p for p in all_boarding if p.zone == zone_key]
+            col.controls = (
+                [mini_tile(p) for p in zone_passengers]
+                or [txt('— Empty —', size=11, color=TEXT_MUTED)]
+            )
+
         update_stats()
         refresh_train_visual()
         page.update()
@@ -653,7 +676,36 @@ def main(page: ft.Page):
         padding=ft.Padding.all(18),
     )
 
+    def zone_panel(zone_name, col):
+        color = get_zone_color(zone_name)
+        short = zone_name.split('-')[0].strip()
+
+        return ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Container(
+                        width=8, height=8,
+                        bgcolor=color,
+                        border_radius=2,
+                    ),
+                    txt(short, size=11, color=color, weight=ft.FontWeight.BOLD),
+                ], spacing=4),
+                ft.Divider(color=BORDER, height=1),
+                ft.Container(
+                    content=col,
+                    expand=True,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                ),
+            ], spacing=4, expand=True),
+            bgcolor=SURFACE,
+            border_radius=8,
+            padding=8,
+            border=ft.Border.all(1, color),
+            expand=True,
+        )
+
     # queue panels
+
     def queue_panel(title, subtitle, col, icon, color):
         return ft.Container(
             content=ft.Column([
@@ -683,12 +735,36 @@ def main(page: ft.Page):
             platform_col,
             ft.Icons.PEOPLE, AMBER,
         ),
-        queue_panel(
-            "Priority Boarding Queue",
-            "Longest trip boards first",
-            boarding_col,
-            ft.Icons.SORT, ACCENT,
-        ),
+        ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.SORT, color=ACCENT, size=16),
+                    ft.Column([
+                        ft.Text('Priority Boarding Queue',
+                                size=13, color=TEXT_PRI, weight=ft.FontWeight.BOLD),
+                        ft.Text('Longest trip boards first - split by zone',
+                                size=10, color=TEXT_MUTED),
+                    ], spacing=1, expand=True),
+                ], spacing=8),
+                divider(),
+                ft.Row([
+                    zone_panel("ZONE A - DOOR 1",
+                               boarding_zone_cols["ZONE A - DOOR 1"]),
+                    zone_panel("ZONE B - DOOR 2",
+                               boarding_zone_cols["ZONE B - DOOR 2"]),
+                    zone_panel("ZONE C - DOOR 3",
+                               boarding_zone_cols["ZONE C - DOOR 3"]),
+                    zone_panel("ZONE D - DOOR 4",
+                               boarding_zone_cols["ZONE D - DOOR 4"]),
+                ], spacing=6, expand=True),
+            ], spacing=8, expand=True),
+            bgcolor=CARD,
+            border_radius=12,
+            padding=16,
+            border=ft.Border.all(1, BORDER),
+            expand=True,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        )
     ], spacing=10, expand=True)
 
     # train visual ref
