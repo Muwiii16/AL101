@@ -198,7 +198,7 @@ def build_train_visual(train):
                         size=9, color=TEXT_MUTED
                     ),
                     alignment=ft.alignment.Alignment(0, 0),
-                    margin=ft.margin.only(top=4),
+                    margin=ft.Margin(0, 4, 0, 0),
                 ),
             ], spacing=8),
             bgcolor=SURFACE,

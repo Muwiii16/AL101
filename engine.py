@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 import uuid
-import math
 
 LRT1_STATIONS = [
     "Fernando Poe Jr.", "Balintawak", "Monumento", "5th Avenue",
